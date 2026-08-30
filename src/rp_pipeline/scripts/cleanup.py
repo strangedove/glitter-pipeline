@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 """
-CLI script for rewriting RP scenes using LLM for quality improvement.
-This is a more advanced rewrite than the cleanup stage - focused on
-improving prose quality, character voice, and scene structure.
+CLI script for cleaning RP scenes (removing tics).
 """
 
 import argparse
@@ -12,13 +10,11 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-# Add src to path
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from rp_pipeline.config.settings import get_settings
-from rp_pipeline.core.generation import SceneGenerator
+from rp_pipeline.config.settings import get_settings, reset_settings
+from rp_pipeline.core.analysis import SceneAnalyzer, TicDetector
+from rp_pipeline.core.cleanup import SceneCleaner
 from rp_pipeline.data.schemas import Scene, Turn
-from rp_pipeline.models.base import ModelFactory
 from rp_pipeline.utils.caching import PipelineCheckpoint
 from rp_pipeline.utils.logging import StructuredLogger
 
@@ -26,7 +22,7 @@ from rp_pipeline.utils.logging import StructuredLogger
 def parse_args():
     """Parse CLI arguments."""
     parser = argparse.ArgumentParser(
-        description="Rewrite RP scenes for quality improvement"
+        description="Clean RP scenes by removing tics"
     )
     
     # Input/Output
@@ -37,43 +33,42 @@ def parse_args():
         help="Input directory or file with scenes (JSONL format)"
     )
     parser.add_argument(
+        "--analysis", "-a",
+        type=str,
+        default=None,
+        help="Directory with analysis results (to use existing tic detection)"
+    )
+    parser.add_argument(
         "--output", "-o",
         type=str,
         default=None,
-        help="Output directory for rewritten scenes (overrides config)"
+        help="Output directory for cleaned scenes (overrides config)"
     )
     
-    # Rewrite options
+    # Cleanup options
     parser.add_argument(
-        "--model", "-m",
+        "--use-rewrite",
+        action="store_true",
+        default=True,
+        help="Use LLM rewriting for complex issues (default: True)"
+    )
+    parser.add_argument(
+        "--no-rewrite",
+        action="store_false",
+        dest="use_rewrite",
+        help="Disable LLM rewriting, use pattern matching only"
+    )
+    parser.add_argument(
+        "--rewrite-model",
         type=str,
         default=None,
         help="Model to use for rewriting (overrides config)"
     )
     parser.add_argument(
-        "--provider", "-p",
+        "--rewrite-provider",
         type=str,
         default=None,
-        help="Provider to use (openrouter, featherless, nvidia)"
-    )
-    parser.add_argument(
-        "--style-rewrite",
-        action="store_true",
-        help="Use style-focused rewrite (more aggressive prose improvement)"
-    )
-    
-    # Model parameters
-    parser.add_argument(
-        "--max-tokens",
-        type=int,
-        default=None,
-        help="Maximum tokens for rewriting (default: from config)"
-    )
-    parser.add_argument(
-        "--temperature",
-        type=float,
-        default=None,
-        help="Temperature for rewriting (default: from config)"
+        help="Provider for rewriting (openrouter, featherless, nvidia)"
     )
     
     # Checkpointing
@@ -118,13 +113,21 @@ def load_config(args: argparse.Namespace) -> Dict[str, Any]:
     settings = get_settings()
     
     config = {
-        "input_path": args.input or settings.pipeline.get("rewrite", {}).get("output_dir", "data/output/cleaned"),
-        "output_dir": args.output or settings.pipeline.get("rewrite", {}).get("output_dir", "data/output/final"),
-        "model": args.model,
-        "provider": args.provider,
-        "style_rewrite": args.style_rewrite,
-        "max_tokens": args.max_tokens or settings.defaults.get("rewriting", {}).get("max_tokens", 5000),
-        "temperature": args.temperature or settings.defaults.get("rewriting", {}).get("temperature", 0.7),
+        "input_path": (
+            args.input
+            or settings.pipeline.get("cleanup", {}).get("output_dir", "data/output/analyzed")
+        ),
+        "analysis_path": (
+            args.analysis
+            or settings.pipeline.get("analyze", {}).get("output_dir", "data/output/analyzed")
+        ),
+        "output_dir": (
+            args.output
+            or settings.pipeline.get("cleanup", {}).get("output_dir", "data/output/cleaned")
+        ),
+        "use_rewrite": args.use_rewrite,
+        "rewrite_model": args.rewrite_model,
+        "rewrite_provider": args.rewrite_provider,
         "checkpoint_enabled": not args.no_checkpoint,
         "resume": args.resume,
         "log_level": args.log_level,
@@ -165,25 +168,44 @@ def load_scene_from_jsonl(file_path: Path) -> Optional[Scene]:
         return None
 
 
-def format_scene_oai(scene: Scene) -> Dict[str, Any]:
-    """Format a scene in OpenAI messages format."""
+def load_analysis(file_path: Path) -> Optional[Dict[str, Any]]:
+    """Load analysis result for a scene."""
+    try:
+        with open(file_path, 'r') as f:
+            return json.loads(f.read())
+    except Exception:
+        return None
+
+
+def format_cleanup_result(
+    scene_id: str,
+    cleanup_result: Any,
+) -> Dict[str, Any]:
+    """Format cleanup result for output."""
+    cleaned_scene = cleanup_result.cleaned_scene
+    
+    # Format cleaned scene in OAI format
     messages = []
-    for turn in scene.turns:
-        role = turn.role.lower()
+    for turn in cleaned_scene.turns:
         messages.append({
-            "role": role,
+            "role": turn.role.lower(),
             "content": turn.content,
         })
     
     return {
-        "id": scene.card_id or f"scene_{hash(str(scene.conversation)) % 10000:04d}",
-        "card_id": scene.card_id,
+        "scene_id": scene_id,
+        "card_id": cleaned_scene.card_id,
         "messages": messages,
         "metadata": {
-            **scene.metadata,
-            "turn_count": scene.turn_count,
-            "total_word_count": scene.total_word_count,
-            "total_token_count": scene.total_token_count,
+            **cleaned_scene.metadata,
+            "turn_count": cleaned_scene.turn_count,
+            "total_word_count": cleaned_scene.total_word_count,
+            "total_token_count": cleaned_scene.total_token_count,
+        },
+        "cleanup_info": {
+            "changes_made": cleanup_result.changes_made,
+            "tics_removed": cleanup_result.tics_removed,
+            "validation_passed": cleanup_result.validation_passed,
         },
     }
 
@@ -195,10 +217,11 @@ def main():
     
     # Set up logging
     logger = StructuredLogger()
-    logger.log("info", "Starting rewrite", **config)
+    logger.log("info", "Starting cleanup", **config)
     
     # Set up input/output
     input_path = Path(config["input_path"])
+    analysis_path = Path(config["analysis_path"])
     output_dir = Path(config["output_dir"])
     output_dir.mkdir(parents=True, exist_ok=True)
     
@@ -213,47 +236,44 @@ def main():
         logger.error(f"No input files found at {input_path}")
         sys.exit(1)
     
-    logger.info(f"Found {len(input_files)} scene files to rewrite")
+    logger.info(f"Found {len(input_files)} scene files to clean")
     
-    # Set up model provider
-    settings = get_settings()
-    rewrite_config = settings.get_model_config("rewriting")
+    # Set up analyzer and cleaner
+    analyzer = SceneAnalyzer()
     
-    if config["provider"]:
-        rewrite_config["provider"] = config["provider"]
-    if config["model"]:
-        rewrite_config["model"] = config["model"]
-    rewrite_config["max_tokens"] = config["max_tokens"]
-    rewrite_config["temperature"] = config["temperature"]
-    
-    provider = ModelFactory.create(
-        rewrite_config.get("provider", "openrouter"),
-        rewrite_config
-    )
-    
-    # Set up generator for rewriting (using rewrite config)
-    generator = SceneGenerator(provider=provider)
-    
-    # Get rewrite prompt
-    from rp_pipeline.config.settings import load_prompts
-    prompts = load_prompts()
-    
-    if config["style_rewrite"]:
-        rewrite_system = prompts.get("style_rewrite_system", "")
+    # Configure cleaner with rewrite if enabled
+    if config["use_rewrite"]:
+        from rp_pipeline.models.base import ModelFactory
+        from rp_pipeline.config.settings import Settings
+        
+        settings = get_settings()
+        rewrite_config = settings.get_model_config("rewriting")
+        
+        if config["rewrite_provider"]:
+            rewrite_config["provider"] = config["rewrite_provider"]
+        if config["rewrite_model"]:
+            rewrite_config["model"] = config["rewrite_model"]
+        
+        from rp_pipeline.models.base import BaseModelProvider
+        provider = ModelFactory.create(
+            rewrite_config.get("provider", "openrouter"),
+            rewrite_config
+        )
+        cleaner = SceneCleaner(provider=provider)
     else:
-        rewrite_system = prompts.get("rewrite_system", "")
+        cleaner = SceneCleaner(provider=None)
     
     # Set up checkpoint
     checkpoint: Optional[PipelineCheckpoint] = None
     if config["checkpoint_enabled"]:
         checkpoint = PipelineCheckpoint(
-            checkpoint_file=output_dir / ".." / ".." / "cache" / "rewrite_checkpoint.json"
+            checkpoint_file=output_dir / ".." / ".." / "cache" / "cleanup_checkpoint.json"
         )
-        if config["resume"] and checkpoint.is_resumable("rewrite"):
+        if config["resume"] and checkpoint.is_resumable("cleanup"):
             start_idx, last_item = checkpoint.get_resume_position()
             logger.info(f"Resuming from {last_item}, processed {start_idx} items")
         else:
-            checkpoint.start_stage("rewrite")
+            checkpoint.start_stage("cleanup")
     
     # Process files
     processed = 0
@@ -274,48 +294,47 @@ def main():
                     checkpoint.update(scene_id, False)
                 continue
             
-            # Rewrite using the generator with rewrite system prompt
-            response = provider.generate(
-                prompt=scene.conversation,
-                system=rewrite_system,
-                max_tokens=config["max_tokens"],
-                temperature=config["temperature"],
+            # Try to load existing analysis
+            analysis_file = analysis_path / f"{scene_id}.analysis.jsonl"
+            analysis_data = load_analysis(analysis_file)
+            
+            if analysis_data:
+                # Use existing analysis
+                from rp_pipeline.core.analysis import TicDetectionResult
+                tic_result = TicDetectionResult(**analysis_data["tic_analysis"])
+                quality_issues = analysis_data.get("quality_analysis", {})
+            else:
+                # Run analysis
+                tic_result, quality_issues = analyzer.analyze(scene)
+            
+            # Clean
+            cleanup_result = cleaner.clean_scene(
+                scene,
+                tic_result=tic_result,
+                quality_issues=quality_issues,
+                use_rewrite=config["use_rewrite"],
             )
-            
-            if not response.success:
-                logger.warning(f"Failed to rewrite {scene_id}: {response.error}")
-                failed += 1
-                if checkpoint:
-                    checkpoint.update(scene_id, False)
-                continue
-            
-            # Parse rewritten conversation
-            # Reuse the parsing logic from SceneGenerator
-            rewritten_scene = generator._parse_conversation(
-                response.content,
-                scene.metadata.get("card"),
-                scene.metadata.get("assistant_name", "Assistant"),
-                scene.metadata.get("user_name", "User"),
-            )
-            
-            # Copy metadata
-            rewritten_scene.metadata = scene.metadata.copy()
             
             # Format and save
-            result = format_scene_oai(rewritten_scene)
-            output_file = output_dir / f"{scene_id}.rewritten.jsonl"
+            result = format_cleanup_result(scene_id, cleanup_result)
+            output_file = output_dir / f"{scene_id}.cleaned.jsonl"
             
             with open(output_file, 'w') as f:
                 f.write(json.dumps(result) + '\n')
             
-            logger.info(f"Rewrote {scene_id}: {scene.total_word_count} -> {rewritten_scene.total_word_count} words")
+            logger.log_cleanup(
+                scene_id=scene_id,
+                changes_made=cleanup_result.changes_made,
+                tics_removed=cleanup_result.tics_removed,
+                validation_passed=cleanup_result.validation_passed,
+            )
             
             successful += 1
             if checkpoint:
                 checkpoint.update(scene_id, True)
             
         except Exception as e:
-            logger.error(f"Error rewriting {file_path}: {e}")
+            logger.error(f"Error cleaning {file_path}: {e}")
             failed += 1
             if checkpoint:
                 checkpoint.update(scene_id, False)
@@ -328,14 +347,14 @@ def main():
     
     duration = time.time() - start_time
     logger.log_pipeline(
-        stage="rewrite",
+        stage="cleanup",
         items_processed=processed,
         items_successful=successful,
         items_failed=failed,
         duration=duration,
     )
     
-    logger.info(f"Rewrite complete: {successful} successful, {failed} failed in {duration:.1f}s")
+    logger.info(f"Cleanup complete: {successful} successful, {failed} failed in {duration:.1f}s")
 
 
 if __name__ == "__main__":

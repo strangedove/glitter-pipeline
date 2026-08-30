@@ -9,7 +9,7 @@ restructured/pipeline/
 ├── config/
 │   ├── prompts.yaml      # All system prompts for generation, analysis, judging
 │   └── settings.yaml     # Default configuration (models, paths, limits, etc.)
-├── scripts/
+├── src/rp_pipeline/scripts/
 │   ├── generate.py       # Generate scenes from character cards
 │   ├── analyze.py        # Analyze scenes for tics and quality issues
 │   ├── cleanup.py        # Clean scenes by removing tics
@@ -173,13 +173,13 @@ All CLI scripts accept arguments that override the YAML configuration. For examp
 
 ```bash
 # Override model and provider
-python scripts/generate.py --model deepseek-ai/DeepSeek-V4-Pro --provider featherless
+python -m rp_pipeline.scripts.generate --model deepseek-ai/DeepSeek-V4-Pro --provider featherless
 
 # Override output directory
-python scripts/generate.py --output my_output/scenes
+python -m rp_pipeline.scripts.generate --output my_output/scenes
 
 # Override generation parameters
-python scripts/generate.py --target-turns 10 --turn-length medium --batch-size 10
+python -m rp_pipeline.scripts.generate --target-turns 10 --turn-length medium --batch-size 10
 ```
 
 ---
@@ -189,7 +189,7 @@ python scripts/generate.py --target-turns 10 --turn-length medium --batch-size 1
 ### generate.py - Generate Scenes
 
 ```bash
-python scripts/generate.py \
+python -m rp_pipeline.scripts.generate \
   --cards data/input/cards/cards.jsonl \
   --output data/output/raw \
   --model xiaomi/mimo-v2.5-pro \
@@ -213,7 +213,7 @@ python scripts/generate.py \
 ### analyze.py - Analyze Scenes for Tics
 
 ```bash
-python scripts/analyze.py \
+python -m rp_pipeline.scripts.analyze \
   --input data/output/raw \
   --output data/output/analyzed \
   --tic-rate-threshold 5.0 \
@@ -234,7 +234,7 @@ Detects:
 ### cleanup.py - Clean Scenes
 
 ```bash
-python scripts/cleanup.py \
+python -m rp_pipeline.scripts.cleanup \
   --input data/output/raw \
   --analysis data/output/analyzed \
   --output data/output/cleaned \
@@ -253,7 +253,7 @@ Removes tics via:
 ### rewrite.py - Rewrite Scenes for Quality
 
 ```bash
-python scripts/rewrite.py \
+python -m rp_pipeline.scripts.rewrite \
   --input data/output/cleaned \
   --output data/output/final \
   --model xiaomi/mimo-v2.5-pro \
@@ -273,7 +273,7 @@ Uses LLM to substantially improve scenes:
 ### judge.py - Judge Scene Quality
 
 ```bash
-python scripts/judge.py \
+python -m rp_pipeline.scripts.judge \
   --input data/output/final \
   --output data/output/judged \
   --model deepseek-ai/DeepSeek-V4-Pro \
@@ -288,7 +288,7 @@ Evaluates on:
 ### full_pipeline.py - End-to-End Pipeline
 
 ```bash
-python scripts/full_pipeline.py \
+python -m rp_pipeline.scripts.full_pipeline \
   --cards data/input/cards/cards.jsonl \
   --output data/output \
   --model xiaomi/mimo-v2.5-pro \
@@ -449,7 +449,7 @@ restructured/pipeline/
 │   │   └── judged/       # Judgment results
 │   ├── cache/            # Checkpoint and cache files
 │   └── logs/             # Log files
-├── scripts/              # CLI scripts
+├── src/rp_pipeline/scripts/              # CLI scripts
 └── src/rp_pipeline/      # Python package
 ```
 
@@ -491,7 +491,7 @@ Make sure you're running from the `restructured/pipeline/` directory or have `sr
 
 ```bash
 cd restructured/pipeline
-PYTHONPATH=src:$PYTHONPATH python scripts/generate.py
+PYTHONPATH=src:$PYTHONPATH python -m rp_pipeline.scripts.generate
 ```
 
 ### API Key Not Found
