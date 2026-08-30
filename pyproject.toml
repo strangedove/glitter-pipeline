@@ -57,6 +57,8 @@ all = [
 rp-generate = "rp_pipeline.scripts.generate:main"
 rp-analyze = "rp_pipeline.scripts.analyze:main"
 rp-cleanup = "rp_pipeline.scripts.cleanup:main"
+rp-rewrite = "rp_pipeline.scripts.rewrite:main"
+rp-judge = "rp_pipeline.scripts.judge:main"
 rp-full = "rp_pipeline.scripts.full_pipeline:main"
 
 [project.urls]

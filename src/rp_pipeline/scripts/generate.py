@@ -10,8 +10,6 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-# Add src to path
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from rp_pipeline.config.settings import get_settings, reset_settings
 from rp_pipeline.core.generation import SceneGenerator

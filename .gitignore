@@ -1,0 +1,30 @@
+# --- Secrets ---
+.env
+.env.*
+*.key
+
+# --- Data (generated artifacts, caches, checkpoints) ---
+data/
+*.cache
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.eggs/
+.venv/
+venv/
+
+# --- Tooling ---
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# --- Editors / OS ---
+.idea/
+.vscode/
+.DS_Store
