@@ -285,7 +285,31 @@ Evaluates on:
 - **Behavioral**: Initiative, responsiveness, emotional range, structural variety, subtext trust, scene advancement
 - **Style**: Concrete vs abstract, functional vs decorative, word precision, sentence rhythm, dialogue craft, show vs tell, freshness vs cliché
 
-### full_pipeline.py - End-to-End Pipeline
+### export.py - Export Training Dataset
+
+```bash
+python -m rp_pipeline.scripts.export \
+  --input data/output/final \
+  --cards data/input/cards/cards.jsonl \
+  --judge-dir data/output/judged \
+  --output data/output/export \
+  --format messages \
+  --val-frac 0.02
+```
+
+Validates final scenes, removes exact and near-duplicates (Jaccard threshold from
+`quality.similarity_threshold`), builds a full-card system prompt per scene, splits
+train/val stratified by card (variants of one card never straddle the split), and writes:
+
+- `train.jsonl` / `val.jsonl` — training-ready records (`{"id", "messages"}` by default;
+  `--format sharegpt` or `--format text` also supported)
+- `export_metadata.jsonl` — provenance sidecar (card, genre, tone, judge verdicts)
+  kept OUT of the training files so quality filtering stays a post-hoc decision
+- `manifest.json` — SHA256 checksums, record counts, and the exact config used
+
+---
+
+## Output Format
 
 ```bash
 python -m rp_pipeline.scripts.full_pipeline \
@@ -510,4 +534,4 @@ Check that your input paths exist and are accessible. Use absolute paths if need
 
 ## License
 
-This is part of the glitter-project repository.
+MIT — see [LICENSE](LICENSE).

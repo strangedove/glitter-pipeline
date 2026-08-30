@@ -60,6 +60,7 @@ rp-cleanup = "rp_pipeline.scripts.cleanup:main"
 rp-rewrite = "rp_pipeline.scripts.rewrite:main"
 rp-judge = "rp_pipeline.scripts.judge:main"
 rp-full = "rp_pipeline.scripts.full_pipeline:main"
+rp-export = "rp_pipeline.scripts.export:main"
 
 [project.urls]
 Homepage = "https://github.com/strangedove/glitter-pipeline"

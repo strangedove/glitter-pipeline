@@ -122,3 +122,11 @@ cache:
   enabled: true
   dir: data/cache
   ttl: 86400  # 24 hours in seconds
+
+# Dataset export
+export:
+  format: messages        # messages | sharegpt | text
+  val_frac: 0.02          # validation holdout (stratified by card)
+  seed: 42
+  dedup: true             # exact + near-duplicate removal
+  similarity_threshold: 0.85

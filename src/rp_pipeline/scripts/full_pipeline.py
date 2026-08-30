@@ -52,6 +52,11 @@ def parse_args():
         action="store_true",
         help="Skip rewrite stage"
     )
+    parser.add_argument(
+        "--skip-export",
+        action="store_true",
+        help="Skip export stage"
+    )
     
     # Generation options
     parser.add_argument(
@@ -345,8 +350,8 @@ def main():
     generate_script = scripts_dir / "generate.py"
     analyze_script = scripts_dir / "analyze.py"
     cleanup_script = scripts_dir / "cleanup.py"
-    # Note: rewrite.py not yet created, but we'll include it for completeness
     rewrite_script = scripts_dir / "rewrite.py"
+    export_script = scripts_dir / "export.py"
     
     # Track overall success
     all_successful = True
@@ -378,6 +383,20 @@ def main():
             all_successful = all_successful and success
         else:
             logger.warning("rewrite.py not found, skipping rewrite stage")
+    
+    if not args.skip_export:
+        if export_script.exists():
+            export_args = ["--input", str(Path(output_dir) / "final")]
+            if args.config:
+                export_args.extend(["--config", args.config])
+            if args.log_level:
+                export_args.extend(["--log-level", args.log_level])
+            if args.log_format:
+                export_args.extend(["--log-format", args.log_format])
+            success = run_stage("export", export_script, export_args, logger)
+            all_successful = all_successful and success
+        else:
+            logger.warning("export.py not found, skipping export stage")
     
     duration = time.time() - start_time
     
