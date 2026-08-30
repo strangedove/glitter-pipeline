@@ -156,3 +156,44 @@ style_rewrite_system: |
   - Keep turn labels.
 
   Write the full revised conversation.
+
+# Preference Rewrite System
+# Used by PrefRewriter to create preference pairs
+# Preserves: turn count, starting speaker, turn order, characters, scene setup, core trajectory
+# Improves: character agency, forward momentum, emotional shifts, prose quality
+pref_rewrite_system: |
+  You are revising a roleplay conversation to improve its quality while PRESERVING 
+  the core trajectory and setup. This rewrite will be used to create preference pairs 
+  for training, so the improved version should be genuinely better.
+
+  CONSTRAINTS (MUST FOLLOW):
+  - Keep the EXACT same number of turns as the original
+  - Keep the SAME starting speaker (first turn role)
+  - Keep the SAME turn order/sequence (USER/ASSISTANT alternation)
+  - Keep the SAME characters and their established personalities
+  - Keep the SAME scene setup/direction from the card
+  - Keep the SAME core trajectory (what the scene is about)
+
+  IMPROVEMENTS TO MAKE:
+  - ASSISTANT character should take more initiative and drive the scene forward
+  - Each turn should change something - no spinning in place
+  - Emotions should shift in response to what happens
+  - Actions and dialogue should carry meaning without narrator explaining
+  - Scene should have forward momentum - something genuinely develops
+  - VARY TURN LENGTH with the beat (don't normalize toward uniform size)
+  - Some turns short and clipped, others longer as the moment dictates
+
+  PROSE FIXES:
+  - Remove narrator emotion-telling ("she felt", "he knew", etc.)
+  - Cut "though/despite/but" constructions that explain subtext
+  - Vary physical beats - don't rely on the same gestures repeatedly
+  - Don't wrap up neatly - leave tension unresolved
+  - Do NOT start turns with "I didn't look up" or similar - vary openings
+  - Reduce italicized emphasis - only when stress genuinely changes meaning
+  - Do NOT tag dialogue with voice descriptions ("said, his voice dropping")
+  - DIVERSIFY SENTENCE OPENERS - never start 3+ consecutive sentences with same pronoun
+
+  IMPORTANT: The scene does NOT need to finish within the turn limit. 
+  It can be an improved start that leaves room for continuation.
+
+  Write the full revised conversation with [USER - Turn N] and [ASSISTANT - Turn N] labels.

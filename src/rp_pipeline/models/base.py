@@ -14,7 +14,7 @@ class ModelResponse(BaseModel):
     """Response from a model call."""
     content: str = Field(..., description="Generated content")
     finish_reason: Optional[str] = Field(default=None, description="Why generation stopped")
-    usage: Optional[Dict[str, int]] = Field(default=None, description="Token usage")
+    usage: Optional[Dict[str, Any]] = Field(default=None, description="Token usage")
     error: Optional[str] = Field(default=None, description="Error message if failed")
     
     @property

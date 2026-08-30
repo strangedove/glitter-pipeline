@@ -50,6 +50,8 @@ class Settings:
         """Override settings from environment variables."""
         # Map environment variables to config paths
         env_mapping = {
+            "ARLI_API_KEY": "models.providers.arli_ai.api_key_env",
+            "ARLI_API_KEY": "models.providers.arli_ai.api_key_env",
             "OPENROUTER_API_KEY": "models.providers.openrouter.api_key_env",
             "FEATHERLESS_API_KEY": "models.providers.featherless.api_key_env",
             "NVIDIA_API_KEY": "models.providers.nvidia.api_key_env",
@@ -138,6 +140,16 @@ class Settings:
     def logging(self) -> Dict[str, Any]:
         """Logging settings."""
         return self.get("logging", {})
+    
+    @property
+    def defaults(self) -> Dict[str, Any]:
+        """Default model configurations."""
+        return self.get("defaults", {})
+    
+    @property
+    def cache(self) -> Dict[str, Any]:
+        """Cache settings."""
+        return self.get("cache", {})
 
 
 # Global settings instance
@@ -168,9 +180,22 @@ def load_prompts(config_path: Optional[str] = None) -> Dict[str, str]:
     Returns:
         Dictionary of prompt name -> prompt text
     """
-    path = config_path or "restructured/pipeline/config/prompts.yaml"
+    if config_path is None:
+        # Try to find prompts.yaml relative to current working directory
+        candidates = [
+            "restructured/pipeline/config/prompts.yaml",
+            "config/prompts.yaml",
+            "prompts.yaml",
+        ]
+        for candidate in candidates:
+            if Path(candidate).exists():
+                config_path = candidate
+                break
+        else:
+            config_path = "restructured/pipeline/config/prompts.yaml"
+    
     try:
-        with open(path, 'r') as f:
+        with open(config_path, 'r') as f:
             return yaml.safe_load(f) or {}
     except FileNotFoundError:
         return {}
