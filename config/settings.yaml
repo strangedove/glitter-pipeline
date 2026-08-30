@@ -1,0 +1,120 @@
+# RP Pipeline Default Settings
+# All settings can be overridden via environment variables
+
+# Model configurations
+models:
+  default:
+    generator: xiaomi/mimo-v2.5-pro
+    judge: deepseek-ai/DeepSeek-V4-Pro
+    
+  # Provider configurations
+  providers:
+    openrouter:
+      base_url: https://openrouter.ai/api/v1
+      api_key_env: OPENROUTER_API_KEY
+      
+    featherless:
+      base_url: https://api.featherless.ai/v1
+      api_key_env: FEATHERLESS_API_KEY
+      
+    nvidia:
+      base_url: https://integrate.api.nvidia.com/v1
+      api_key_env: NVIDIA_API_KEY
+
+# Default provider for each role
+defaults:
+  generation:
+    provider: openrouter
+    model: xiaomi/mimo-v2.5-pro
+    max_tokens: 4096
+    temperature: 0.85
+    repetition_penalty: 1.05
+    
+  judging:
+    provider: featherless
+    model: deepseek-ai/DeepSeek-V4-Pro
+    max_tokens: 1200
+    temperature: 0.3
+    
+  rewriting:
+    provider: openrouter
+    model: xiaomi/mimo-v2.5-pro
+    max_tokens: 5000
+    temperature: 0.7
+
+# Generation parameters
+generation:
+  cards_per_batch: 5
+  variants_per_card: 3
+  target_turns: 8
+  turn_length: long  # short, medium, long
+  either_opener: true  # Allow either USER or ASSISTANT to open
+  
+# Pipeline stages
+pipeline:
+  stages:
+    - generate
+    - analyze
+    - cleanup
+    - rewrite
+  
+  # Stage-specific settings
+  generate:
+    enabled: true
+    output_dir: data/output/raw
+    checkpoint_file: data/cache/generate_checkpoint.json
+    
+  analyze:
+    enabled: true
+    output_dir: data/output/analyzed
+    
+  cleanup:
+    enabled: true
+    output_dir: data/output/cleaned
+    
+  rewrite:
+    enabled: true
+    output_dir: data/output/final
+
+# Paths
+paths:
+  input:
+    cards_dir: data/input/cards
+    default_cards: card-compare/kimi-batch/cards.jsonl
+    
+  output:
+    base: data/output
+    raw: data/output/raw
+    analyzed: data/output/analyzed
+    cleaned: data/output/cleaned
+    final: data/output/final
+    
+  cache: data/cache
+  logs: data/logs
+  
+# Limits
+limits:
+  max_concurrent: 4
+  max_retries: 3
+  rate_limit_delay: 60  # seconds
+  timeout: 300  # seconds
+  
+# Quality thresholds
+quality:
+  min_token_count: 50
+  max_token_count: 6144
+  min_turn_count: 4
+  max_turn_count: 12
+  similarity_threshold: 0.85  # Jaccard similarity for validation
+  
+# Logging
+logging:
+  level: INFO
+  format: json  # json or text
+  file: data/logs/pipeline.log
+
+# Caching
+cache:
+  enabled: true
+  dir: data/cache
+  ttl: 86400  # 24 hours in seconds

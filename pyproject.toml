@@ -1,0 +1,100 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rp-pipeline"
+version = "1.0.0"
+description = "Roleplay dataset generation pipeline"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+authors = [
+    {name = "Your Name", email = "your.email@example.com"}
+]
+keywords = ["roleplay", "dataset", "generation", "llm", "pipeline"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = [
+    "pyyaml>=6.0.1",
+    "pydantic>=2.0.0",
+    "requests>=2.31.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "black>=23.0.0",
+    "ruff>=0.1.0",
+    "mypy>=1.0.0",
+]
+cli = [
+    "typer>=0.9.0",
+    "rich>=13.7.0",
+]
+async = [
+    "aiohttp>=3.9.0",
+]
+analysis = [
+    "pandas>=2.0.0",
+    "numpy>=1.24.0",
+]
+all = [
+    "rp-pipeline[dev,cli,async,analysis]",
+]
+
+[project.scripts]
+rp-generate = "rp_pipeline.scripts.generate:main"
+rp-analyze = "rp_pipeline.scripts.analyze:main"
+rp-cleanup = "rp_pipeline.scripts.cleanup:main"
+rp-full = "rp_pipeline.scripts.full_pipeline:main"
+
+[project.urls]
+Homepage = "https://github.com/strangedove/glitter-project"
+Documentation = "https://github.com/strangedove/glitter-project#readme"
+Repository = "https://github.com/strangedove/glitter-project"
+Issues = "https://github.com/strangedove/glitter-project/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.black]
+line-length = 100
+target-version = ["py310", "py311", "py312"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # Pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "UP",  # pyupgrade
+]
+ignore = [
+    "E501",  # line too long (handled by black)
+]
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+python_files = ["test_*.py", "*_test.py"]
+addopts = "-v --tb=short"
+testpaths = ["tests"]

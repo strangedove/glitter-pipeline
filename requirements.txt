@@ -1,0 +1,28 @@
+# RP Pipeline Dependencies
+# Core dependencies for the restructured pipeline
+
+# Python version: 3.10+
+
+# Data handling
+pyyaml>=6.0.1
+pydantic>=2.0.0
+
+# HTTP/JSON
+requests>=2.31.0
+
+# Async/concurrency (optional, for parallel generation)
+# aiohttp>=3.9.0
+
+# CLI (optional, for better CLI experience)
+# typer>=0.9.0
+# rich>=13.7.0
+
+# Logging (optional, for structured logging)
+# structlog>=23.2.0
+
+# Progress bars (optional)
+# tqdm>=4.66.0
+
+# Data analysis (optional, for metrics)
+# pandas>=2.0.0
+# numpy>=1.24.0

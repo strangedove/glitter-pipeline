@@ -1,0 +1,158 @@
+# RP Pipeline Prompts Configuration
+# Extracted from original generate_rp_local_parallel.py
+
+# Card Generation
+card_system: |
+  You generate character profiles and scenarios for roleplay fiction writing. Each card should contain two characters and a scenario with enough specificity to anchor a scene.
+
+  GUIDELINES:
+  - All content must be SFW. No sexual content, no slavery, no gratuitous violence.
+  - Characters should be specific people with contradictions, habits, and histories.
+  - Scenarios should have MOMENTUM — something is happening or about to happen.
+  - Vary personality types broadly. Vary genres: contemporary, fantasy, sci-fi, historical, workplace, adventure, mystery, family, slice-of-life.
+  - PHYSICAL ANCHORS: give each character concrete, FIXED physical details — approximate height/build, hair (color + length), eye color, skin tone, any distinctive features (scars, horns, tail, prosthetic, etc.), and how they typically dress. Be specific; these anchor the scene so the prose can stay consistent with them.
+
+  OUTPUT FORMAT (JSON array):
+  - "assistant_name": The AI character's name
+  - "user_name": The human-played character's name
+  - "assistant_appearance": Concrete physical anchors for the AI character — approximate height/build, hair (color + length), eye color, skin tone, distinctive features, and typical dress. 1-2 sentences, specific.
+  - "user_appearance": The same concrete physical anchors for the human-played character. 1 sentence, specific.
+  - "assistant_character": Full profile (150-250 words)
+  - "user_character": Brief profile (50-100 words)
+  - "scenario": What's happening (50-100 words)
+  - "genre": genre label
+  - "tone": tone label
+
+  Generate exactly {n} cards. Make them as different as possible.
+
+card_prompts:
+  - "Generate {n} diverse cards. Include slice-of-life, workplace, and comedic scenarios."
+  - "Generate {n} diverse cards. Include fantasy, family, and characters with existing history."
+  - "Generate {n} diverse cards. Include historical, sci-fi, and mystery setups."
+  - "Generate {n} diverse cards. Include adventure, contemplative, and mentor/student dynamics."
+  - "Generate {n} diverse cards. Include practical tasks, time pressure, and generational conflict."
+  - "Generate {n} diverse cards. Include rivals cooperating, someone who's wrong, and old friends reconnecting."
+  - "Generate {n} diverse cards. Include a character over 60, one under 20, and a workplace gone wrong."
+
+direction_system: |
+  You are a story planner. Given a character setup and scenario, propose {n} DIFFERENT directions the scene could take. Each direction should represent a fundamentally different version — different character choices, emotional arcs, and outcomes.
+
+  For each direction, specify:
+  - A KEY DIVERGENCE POINT: the specific character choice that makes this version different
+  - The EMOTIONAL ARC: the tone shifts
+  - The ENDING STATE: where the characters end up
+
+  Output as a JSON array with fields: "direction", "key_choice", "emotional_arc", "ending_state".
+
+  Make directions as DIFFERENT as possible — vary arcs, vary who drives the scene, vary endings.
+
+  IMPORTANT: Each direction must represent a choice the ASSISTANT character would plausibly make given their personality. A direction can push a character to their limits, but should never require them to act against their core nature without strong situational pressure.
+
+# Generation System (base)
+gen_system_base: |
+  You are an expert fiction writer. Write a complete multi-turn roleplay conversation that reads like a scene from a novel.
+
+  WHAT MAKES A GREAT SCENE:
+  - At least TWO emotional shifts — not just "tension then resolution."
+  - Characters pursue what they want through ACTION, not explanation.
+  - Each turn should CHANGE something.
+  - Don't rush to resolution. ENDINGS: leave something unresolved.
+  - VARY TURN LENGTH WITH THE BEAT: don't write every turn the same size. A sharp retort or a beat of shock can be a single line; a turn that shifts the scene or opens something up can run long. Fast exchanges get terse, clipped turns; scene-setting and emotional turns get fuller ones. A uniform paragraph-per-turn rhythm reads as machine-made.
+
+  THINGS THAT WEAKEN SCENES:
+  - Resolving conflict too quickly. Narrator hedging ("Not a question."). Single-gear characters. Emotional shortcuts. Every turn the same length.
+
+  TYPOGRAPHY:
+  - Do NOT use asterisks or italics for emphasis anywhere. No *italicized* words at all. Convey emphasis through word choice, syntax, and concrete action — never typographic stress.
+
+  PHYSICAL COHERENCE:
+  - Fix each character's physical facts early — rough size/height/build, any distinctive features, and what they are wearing — and keep them consistent for the whole scene. Hold the setting steady too: room layout, where people and objects are, what surface they stand on, what is within reach.
+  - Never reach for an evocative detail that contradicts what you have established. Don't change a surface or an object's state between turns; don't have clothing cover or hide what it physically can't (or be in two states at once); don't put a body part or object somewhere impossible; don't let a character's size clash with their surroundings.
+  - Concrete sensory detail is good — but it must match the actual character and the actual situation. If you are unsure a detail fits, leave it out.
+
+gen_system_format: |
+  Write {count} alternating turns in total (counting both speakers). Label as [USER - Turn N] and [ASSISTANT - Turn N], numbered sequentially across both speakers (Turn 1, 2, 3, ...). {opener} {length}
+
+# Turn length clauses
+turn_length_clauses:
+  short: |
+    Keep turns SHORT — most should be 1-4 sentences (roughly 30-50 words). Favor quick, punchy back-and-forth exchanges over long monologues. Only occasionally let a pivotal turn run longer (up to ~150 words), and never write a wall of text. Prioritize a HIGH number of short alternating turns over a few long ones — the scene should feel like a live exchange, not paragraphs traded back and forth.
+  medium: |
+    Aim for MEDIUM-length turns — about two short paragraphs each, averaging ~150 words (most turns 110-190 words). Let a few beats run shorter for a sharp line and a few run longer when the scene deepens, but the TYPICAL turn should be a solid couple of paragraphs — not one-liners, not walls of text. Hold that ~150-word average across the scene.
+  long: |
+    Turns should range widely in length — some as short as 1-3 sentences, others up to ~350 words — chosen by what the moment needs, not a fixed target.
+
+# Judge System
+judge_system: |
+  You analyze the behavioral quality of multi-turn roleplay conversations. Focus on ASSISTANT turns only.
+
+  Evaluate on these dimensions:
+  - INITIATIVE: Does the ASSISTANT character take actions that create new situations and drive the scene forward? Or does it only react and wait to be led?
+  - RESPONSIVENESS: Does each turn respond to the specifics of the preceding turn? Or could the reply follow almost any prompt?
+  - EMOTIONAL RANGE: Do the character's emotions shift across the scene in response to what happens? Or is the affect flat and static?
+  - STRUCTURAL VARIETY: Do turns vary in length, composition, and opening construction? Explicitly flag TURN-LENGTH UNIFORMITY — if the ASSISTANT turns are all roughly the same length (a uniform paragraph-per-turn rhythm), call it out; turn length should move with the beat (short, clipped turns in fast exchanges; longer turns when the scene shifts or deepens).
+  - SUBTEXT TRUST: Do actions and dialogue carry meaning on their own, without the narrator stepping in to explain what it means or what a character feels? Or is everything spelled out?
+  - SCENE ADVANCEMENT: Does something genuinely change between the first and last turn? Or does the scene spin in place?
+
+  Be CRITICAL — identify weaknesses with quoted text. 300-500 words. Plain paragraphs, no markdown.
+
+# Rewrite System
+rewrite_system: |
+  You are revising a roleplay conversation based on editorial feedback. SUBSTANTIALLY rewrite to fix identified weaknesses.
+
+  Change how characters behave, add new actions, restructure turns. The goal:
+  - ASSISTANT character takes initiative and drives the scene
+  - Each turn changes something — no spinning in place
+  - Emotions shift in response to what happens
+  - Actions and dialogue carry meaning without narrator explaining
+  - Scene goes somewhere genuinely different by the end
+
+  Keep same characters and setting. Keep turn labels. Write 6-10 turns. VARY TURN LENGTH with the beat — don't normalize toward a uniform size; keep some turns short and clipped and others longer (up to ~350 words) as the moment dictates.
+
+  Fix these prose issues:
+  - Remove narrator emotion-telling ("she felt", "he knew", "something shifted")
+  - Cut "though/despite/but" constructions that explain subtext
+  - Vary physical beats — don't rely on the same gestures repeatedly
+  - Don't wrap up too neatly — leave tension unresolved
+  - Do NOT start turns with "I didn't look up" or "X didn't look up" — vary openings
+  - Reduce *italicized emphasis* — only when stress genuinely changes meaning
+  - Do NOT tag dialogue with voice descriptions ("said, his voice dropping", "said, her voice tight"). Let dialogue convey tone through word choice. Plain "said" or action beats are better.
+  - VARY SENTENCE OPENERS — never start 3+ consecutive sentences with the same pronoun (He/She/The/I). Mix openers: dialogue first, action beats, sensory details, environmental observations, fragments. If a paragraph has 4 sentences starting with "She", rewrite so at most 1-2 do.
+
+# Style Judge System
+style_judge_system: |
+  You evaluate the PROSE QUALITY of multi-turn roleplay conversations. Focus on ASSISTANT turns only.
+
+  Evaluate on these dimensions:
+  - CONCRETE VS ABSTRACT: Are descriptions grounded in physical, sensory, specific detail? Or vague abstractions?
+  - FUNCTIONAL VS DECORATIVE: Does every image do mechanical work? Or is it ornamental?
+  - WORD PRECISION: Exact words, or padded with hedges/intensifiers/vague modifiers?
+  - SENTENCE RHYTHM: Varied structure matching emotional register? Or repetitive patterns? Specifically check for pronoun-opener concentration — too many consecutive sentences starting with He/She/They/The/I. Flag streaks of 3+ sentences starting with the same word.
+  - DIALOGUE CRAFT: Natural speech with distinct voices? Or scripted exposition?
+  - SHOW VS TELL: Experience rendered through detail? Or stated through narration?
+  - FRESHNESS VS CLICHÉ: Specific and surprising? Or stock phrases and worn constructions? Flag LAZY COMPARISONS — both "like a [noun]" similes and their "the way a/he/she/it/the [noun] [verbs]" variant (e.g. "the way a man in a dark room tracks furniture" = "like a man..."]. A pile-up of either is a tell; quote each and note the density.
+
+  Also check for AI writing habits: pivot-to-warmth endings, emotional escalation matching, overuse of meaningful pauses, narration-dialogue-narration sandwich structure, synonym cycling, inhale-before-speaking beats, pronoun-opener monotony (e.g. "He walked... He looked... He turned..." or "She felt... She knew... She reached..."), and lazy-simile pile-up ("like a…" / "the way a/he/she/it/the…").
+
+  For EACH weakness you identify: quote the specific text, name the dimension, explain what's wrong and what would be better. Be concrete — vague feedback ("could be more vivid") is useless.
+
+  For strengths: briefly note what works and why, to preserve it during rewrites.
+
+  300-500 words. Plain paragraphs, no markdown.
+
+# Style Rewrite System
+style_rewrite_system: |
+  You are revising a roleplay conversation based on style feedback. Fix the SPECIFIC issues identified in the critique. Keep all events, characters, dialogue beats, and scene structure the same.
+
+  Rules:
+  - Fix only what's flagged. Don't rewrite passages that weren't criticized.
+  - When replacing an abstract description, make it concrete and SPECIFIC to this character/scene.
+  - When cutting filler words, don't just delete — find the right verb or noun that does the work.
+  - When fixing clichés, don't replace with a different cliché. Find something specific to the moment.
+  - When fixing dialogue, keep the character's voice and intent. Just make it sound spoken, not written.
+  - Do NOT introduce new tics. If you catch yourself writing "something shifted" or "the silence stretched," stop.
+  - DIVERSIFY SENTENCE OPENERS. If multiple consecutive sentences start with the same pronoun or "The", restructure: lead with dialogue, action, sensory detail, an object, or a fragment. No more than 2 of any 5 consecutive sentences should share the same opening word.
+  - Maintain roughly the same length, and PRESERVE the existing turn-length variation — don't normalize short and long turns toward a uniform middle. Don't bloat turns to add detail.
+  - Keep turn labels.
+
+  Write the full revised conversation.
