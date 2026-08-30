@@ -4,6 +4,7 @@ OpenAI-compatible API at https://api.arliai.com/v1/chat/completions
 """
 
 import os
+import time
 from typing import Any, Dict, List, Optional
 
 import requests
@@ -117,77 +118,67 @@ class ArliAIProvider(BaseModelProvider):
         temperature: float = 0.85,
         **kwargs: Any,
     ) -> ModelResponse:
-        """
-        Generate a response from the model.
-
-        Args:
-            prompt: The user prompt
-            system: System prompt
-            max_tokens: Maximum tokens to generate
-            temperature: Sampling temperature
-            **kwargs: Additional model parameters
-
-        Returns:
-            ModelResponse with generated content
-        """
         headers = self._get_headers()
+        timeout = float(kwargs.pop("timeout", 300.0))
+        retries = int(kwargs.pop("retries", 2))
+
         payload = self._get_payload(prompt, system, max_tokens, temperature, **kwargs)
 
-        try:
+        last_error = "unknown error"
+        for attempt in range(retries + 1):
             response = requests.post(
                 f"{self.base_url}/chat/completions",
                 headers=headers,
                 json=payload,
-                timeout=120,
+                timeout=timeout,
             )
-            response.raise_for_status()
-            data = response.json()
+            try:
+                response.raise_for_status()
+                data = response.json()
 
-            content = ""
-            if data.get("choices") and len(data["choices"]) > 0:
-                content = data["choices"][0].get("message", {}).get("content", "")
+                # Some models (reasoning-style) return content: null when the
+                # token budget goes to the reasoning channel — treat as failure.
+                content = None
+                if data.get("choices"):
+                    content = data["choices"][0].get("message", {}).get("content")
+                content = str(content) if content else ""
 
-            usage = {}
-            if data.get("usage"):
-                usage = {
-                    "prompt_tokens": data["usage"].get("prompt_tokens", 0),
-                    "completion_tokens": data["usage"].get("completion_tokens", 0),
-                    "total_tokens": data["usage"].get("total_tokens", 0),
-                }
+                usage = {}
+                if data.get("usage"):
+                    usage = {
+                        "prompt_tokens": data["usage"].get("prompt_tokens", 0),
+                        "completion_tokens": data["usage"].get("completion_tokens", 0),
+                        "total_tokens": data["usage"].get("total_tokens", 0),
+                    }
+                finish_reason = (data.get("choices") or [{}])[0].get("finish_reason")
 
-            return ModelResponse(
-                content=content,
-                success=True,
-                error=None,
-                usage=usage,
-                model_id=self.model_id,
-            )
+                if content:
+                    return ModelResponse(
+                        content=content,
+                        success=True,
+                        error=None,
+                        usage=usage,
+                        model_id=self.model_id,
+                    )
 
-        except requests.exceptions.Timeout:
-            return ModelResponse(
-                content="",
-                success=False,
-                error="Request timeout",
-                usage={},
-                model_id=self.model_id,
-            )
-        except requests.exceptions.RequestException as e:
-            error_msg = str(e)
-            if hasattr(e, "response") and e.response is not None:
-                try:
-                    error_data = e.response.json()
-                    error_msg = error_data.get("message", error_msg)
-                except (ValueError, KeyError):
-                    error_msg = f"API error: {e.response.status_code} - {error_msg}"
-            else:
-                error_msg = f"API error: {error_msg}"
-            return ModelResponse(
-                content="",
-                success=False,
-                error=error_msg,
-                usage={},
-                model_id=self.model_id,
-            )
+                last_error = (
+                    "empty content (finish_reason=length)"
+                    if finish_reason == "length"
+                    else "empty content from model"
+                )
+            except requests.exceptions.RequestException as e:
+                last_error = f"API error: {e}"
+
+            if attempt < retries:
+                time.sleep(2 * (attempt + 1))
+
+        return ModelResponse(
+            content="",
+            success=False,
+            error=last_error,
+            usage={},
+            model_id=self.model_id,
+        )
 
     def chat(
         self,

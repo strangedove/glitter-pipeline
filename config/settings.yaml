@@ -29,7 +29,7 @@ models:
 defaults:
   generation:
     provider: arli_ai
-    model: Gemma-4-31B-Agares-v1
+    model: DeepSeek-V4-Flash-0731
     max_tokens: 4096
     temperature: 0.85
     repetition_penalty: 1.05
