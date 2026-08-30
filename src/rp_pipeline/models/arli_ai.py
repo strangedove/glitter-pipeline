@@ -108,6 +108,9 @@ class ArliAIProvider(BaseModelProvider):
             payload["repetition_penalty"] = kwargs["repetition_penalty"]
         if "stop" in kwargs:
             payload["stop"] = kwargs["stop"]
+        for extra in ("thinking_token_budget", "reasoning_effort", "reasoning_config"):
+            if extra in kwargs:
+                payload[extra] = kwargs[extra]
         return payload
 
     def generate(
@@ -118,6 +121,7 @@ class ArliAIProvider(BaseModelProvider):
         temperature: float = 0.85,
         **kwargs: Any,
     ) -> ModelResponse:
+        """Generate a response from the model."""
         headers = self._get_headers()
         timeout = float(kwargs.pop("timeout", 300.0))
         retries = int(kwargs.pop("retries", 2))
@@ -126,49 +130,54 @@ class ArliAIProvider(BaseModelProvider):
 
         last_error = "unknown error"
         for attempt in range(retries + 1):
-            response = requests.post(
-                f"{self.base_url}/chat/completions",
-                headers=headers,
-                json=payload,
-                timeout=timeout,
-            )
             try:
+                response = requests.post(
+                    f"{self.base_url}/chat/completions",
+                    headers=headers,
+                    json=payload,
+                    timeout=timeout,
+                )
                 response.raise_for_status()
                 data = response.json()
-
-                # Some models (reasoning-style) return content: null when the
-                # token budget goes to the reasoning channel — treat as failure.
-                content = None
-                if data.get("choices"):
-                    content = data["choices"][0].get("message", {}).get("content")
-                content = str(content) if content else ""
-
-                usage = {}
-                if data.get("usage"):
-                    usage = {
-                        "prompt_tokens": data["usage"].get("prompt_tokens", 0),
-                        "completion_tokens": data["usage"].get("completion_tokens", 0),
-                        "total_tokens": data["usage"].get("total_tokens", 0),
-                    }
-                finish_reason = (data.get("choices") or [{}])[0].get("finish_reason")
-
-                if content:
-                    return ModelResponse(
-                        content=content,
-                        success=True,
-                        error=None,
-                        usage=usage,
-                        model_id=self.model_id,
-                    )
-
-                last_error = (
-                    "empty content (finish_reason=length)"
-                    if finish_reason == "length"
-                    else "empty content from model"
-                )
             except requests.exceptions.RequestException as e:
-                last_error = f"API error: {e}"
+                body = ""
+                if getattr(e, "response", None) is not None:
+                    body = e.response.text[:200]
+                last_error = f"API error: {e} {body}"
+                if attempt < retries:
+                    time.sleep(2 * (attempt + 1))
+                continue
 
+            # Some models (reasoning-style) return content: null when the
+            # token budget goes to the reasoning channel — treat as failure.
+            content = None
+            if data.get("choices"):
+                content = data["choices"][0].get("message", {}).get("content")
+            content = str(content) if content else ""
+
+            usage = {}
+            if data.get("usage"):
+                usage = {
+                    "prompt_tokens": data["usage"].get("prompt_tokens", 0),
+                    "completion_tokens": data["usage"].get("completion_tokens", 0),
+                    "total_tokens": data["usage"].get("total_tokens", 0),
+                }
+            finish_reason = (data.get("choices") or [{}])[0].get("finish_reason")
+
+            if content:
+                return ModelResponse(
+                    content=content,
+                    success=True,
+                    error=None,
+                    usage=usage,
+                    model_id=self.model_id,
+                )
+
+            last_error = (
+                "empty content (finish_reason=length)"
+                if finish_reason == "length"
+                else "empty content from model"
+            )
             if attempt < retries:
                 time.sleep(2 * (attempt + 1))
 
