@@ -276,14 +276,37 @@ def main():
     
     for card in card_db:
         card_id = f"{card.assistant_name}|{card.user_name}"
-        
+
+        # Trajectory-planned variants: batch-plan N distinct directions in
+        # one planner call, then generate one scene per direction. Falls
+        # back to independent samples if planning fails.
+        directions = None
+        if config["variants_per_card"] > 1:
+            try:
+                directions, plan_resp = generator.plan_directions(
+                    card, config["variants_per_card"]
+                )
+                if not directions:
+                    logger.warning(
+                        f"Direction planning failed for {card_id} "
+                        f"({plan_resp.error or 'unparseable'}); falling back to independent samples"
+                    )
+            except Exception as e:
+                logger.warning(f"Direction planning error for {card_id}: {e}")
+
         for variant in range(config["variants_per_card"]):
             try:
+                gen_kwargs_v = dict(gen_kwargs)
+                if directions and variant < len(directions):
+                    gen_kwargs_v["direction"] = generator.format_direction(directions[variant])
                 scene, response = generator.generate_scene(
                     card,
                     max_tokens=config["max_tokens"],
                     temperature=config["temperature"],
-                    **gen_kwargs
+                    **gen_kwargs_v
+                )
+                direction_meta = (
+                    directions[variant] if directions and variant < len(directions) else None
                 )
                 
                 if scene is None:
@@ -293,6 +316,9 @@ def main():
                         checkpoint.update(f"{card_id}_v{variant}", False)
                     continue
                 
+                if direction_meta:
+                    scene.metadata["direction"] = direction_meta
+
                 # Format and save
                 oai_scene = format_scene_oai(scene)
                 output_file = output_dir / f"{card.assistant_name}_{card.user_name}_v{variant}.jsonl"

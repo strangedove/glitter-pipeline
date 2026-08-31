@@ -3,8 +3,9 @@ Scene generation for RP Pipeline.
 Handles the core generation logic using configured model providers.
 """
 
+import json
 import re
-from typing import Any, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from rp_pipeline.config.settings import get_settings, load_prompts
 from rp_pipeline.data.cards import CardFormatter
@@ -37,6 +38,64 @@ class SceneGenerator:
 
         # Load turn length clauses
         self.turn_length_clauses = self.prompts.get("turn_length_clauses", {})
+
+    def plan_directions(
+        self,
+        card: CharacterCard,
+        n: int,
+        **kwargs: Any,
+    ) -> Tuple[List[Dict[str, str]], ModelResponse]:
+        """
+        Plan n fundamentally different scene trajectories for a card in a
+        single LLM call (batch planning keeps the directions distinct).
+
+        Returns (directions, response) where directions is a list of dicts
+        with keys: direction, key_choice, emotional_arc, ending_state.
+        Empty list on parse failure.
+        """
+        system = self.prompts.get("direction_system", "")
+        if not system:
+            return [], ModelResponse(
+                content="", success=False, error="direction_system prompt missing"
+            )
+        system = system.replace("{n}", str(n))
+
+        card_text, _, _ = CardFormatter.format_card(card)
+        max_tokens = kwargs.pop("max_tokens", 3000)
+        temperature = kwargs.pop("temperature", 0.9)
+        response = self.provider.generate(
+            prompt=card_text,
+            system=system,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            **kwargs,
+        )
+        if not response.success or not response.content:
+            return [], response
+
+        content = re.sub(r"```(?:json)?", "", response.content)
+        m = re.search(r"\[.*\]", content, re.S)
+        if not m:
+            return [], response
+        try:
+            directions = json.loads(m.group())
+        except (json.JSONDecodeError, ValueError):
+            return [], response
+        if not isinstance(directions, list):
+            return [], response
+        return [d for d in directions if isinstance(d, dict) and d.get("direction")], response
+
+    def format_direction(self, d: Dict[str, str]) -> str:
+        """Render a planned direction dict as generation-prompt text."""
+        parts = ["TRAJECTORY OUTLINE (follow this direction for the scene):"]
+        parts.append(f"- Direction: {d.get('direction', '')}")
+        if d.get("key_choice"):
+            parts.append(f"- Key divergence: a choice by the ASSISTANT character — {d['key_choice']}")
+        if d.get("emotional_arc"):
+            parts.append(f"- Emotional arc: {d['emotional_arc']}")
+        if d.get("ending_state"):
+            parts.append(f"- Ending state: {d['ending_state']}")
+        return "\n".join(parts)
 
     def generate_scene(
         self,
