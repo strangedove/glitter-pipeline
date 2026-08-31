@@ -266,7 +266,7 @@ class SceneRewriter:
             return None, response
         
         # Parse rewritten scene
-        rewritten_scene = SceneGenerator._parse_conversation(
+        rewritten_scene = SceneGenerator(provider=self.provider)._parse_conversation(
             response.content,
             scene.metadata.get("card"),
             scene.metadata.get("assistant_name", "Assistant"),

@@ -13,9 +13,9 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 
-from rp_pipeline.config.settings import get_settings
-from rp_pipeline.core.generation import SceneGenerator
+from rp_pipeline.config.settings import get_settings, load_prompts
 from rp_pipeline.data.schemas import Scene, Turn
+from rp_pipeline.core.generation import SceneGenerator
 from rp_pipeline.models.base import ModelFactory
 from rp_pipeline.utils.caching import PipelineCheckpoint
 from rp_pipeline.utils.logging import StructuredLogger
@@ -173,9 +173,10 @@ def format_scene_oai(scene: Scene) -> Dict[str, Any]:
             "content": turn.content,
         })
     
+    card_id = scene.card_id or scene.metadata.get("card_id")
     return {
-        "id": scene.card_id or f"scene_{hash(str(scene.conversation)) % 10000:04d}",
-        "card_id": scene.card_id,
+        "id": card_id or f"scene_{hash(str(scene.conversation)) % 10000:04d}",
+        "card_id": card_id,
         "messages": messages,
         "metadata": {
             **scene.metadata,
@@ -229,18 +230,20 @@ def main():
         rewrite_config
     )
     
-    # Set up generator for rewriting (using rewrite config)
+    # Set up rewriter. Default: PrefRewriter (structure-preserving preference
+    # rewrite: same turn count, same speaker order, edited content).
+    # --style-rewrite keeps the legacy free-form rewrite_system flow.
+    from rp_pipeline.core.pref_rewrite import PrefRewriter
+
     generator = SceneGenerator(provider=provider)
-    
-    # Get rewrite prompt
-    from rp_pipeline.config.settings import load_prompts
-    prompts = load_prompts()
-    
+    pref_rewriter = None
+    rewrite_system = ""
     if config["style_rewrite"]:
+        prompts = load_prompts()
         rewrite_system = prompts.get("style_rewrite_system", "")
     else:
-        rewrite_system = prompts.get("rewrite_system", "")
-    
+        pref_rewriter = PrefRewriter(provider)
+
     # Set up checkpoint
     checkpoint: Optional[PipelineCheckpoint] = None
     if config["checkpoint_enabled"]:
@@ -272,34 +275,54 @@ def main():
                     checkpoint.update(scene_id, False)
                 continue
             
-            # Rewrite using the generator with rewrite system prompt
-            response = provider.generate(
-                prompt=scene.conversation,
-                system=rewrite_system,
-                max_tokens=config["max_tokens"],
-                temperature=config["temperature"],
-            )
-            
-            if not response.success:
+            # Structure-preserving path (default): PrefRewriter keeps the
+            # original turn count and speaker order; free-form fallback for
+            # --style-rewrite.
+            if pref_rewriter is not None:
+                rewritten_scene, response = pref_rewriter.rewrite_scene(
+                    scene,
+                    max_tokens=config["max_tokens"],
+                    temperature=config["temperature"],
+                )
+            else:
+                response = provider.generate(
+                    prompt=scene.conversation,
+                    system=rewrite_system,
+                    max_tokens=config["max_tokens"],
+                    temperature=config["temperature"],
+                )
+                if not response.success:
+                    rewritten_scene = None
+                else:
+                    rewritten_scene = generator._parse_conversation(
+                        response.content,
+                        scene.metadata.get("card"),
+                        scene.metadata.get("assistant_name", "Assistant"),
+                        scene.metadata.get("user_name", "User"),
+                    )
+                    rewritten_scene.metadata = scene.metadata.copy()
+
+            if not response.success or rewritten_scene is None:
                 logger.warning(f"Failed to rewrite {scene_id}: {response.error}")
                 failed += 1
                 if checkpoint:
                     checkpoint.update(scene_id, False)
                 continue
+
+            # Structural verifier: a rewrite that drifts on turn count or
+            # speaker order breaks the preference-pair contract — reject it.
+            orig_roles = [t.role for t in scene.turns]
+            new_roles = [t.role for t in rewritten_scene.turns]
+            if len(new_roles) != len(orig_roles) or new_roles != orig_roles:
+                logger.warning(
+                    f"Rejected rewrite {scene_id}: turn structure drifted "
+                    f"({len(orig_roles)}->{len(new_roles)} turns)"
+                )
+                failed += 1
+                if checkpoint:
+                    checkpoint.update(scene_id, False)
+                continue
             
-            # Parse rewritten conversation
-            # Reuse the parsing logic from SceneGenerator
-            rewritten_scene = generator._parse_conversation(
-                response.content,
-                scene.metadata.get("card"),
-                scene.metadata.get("assistant_name", "Assistant"),
-                scene.metadata.get("user_name", "User"),
-            )
-            
-            # Copy metadata
-            rewritten_scene.metadata = scene.metadata.copy()
-            
-            # Format and save
             result = format_scene_oai(rewritten_scene)
             output_file = output_dir / f"{scene_id}.rewritten.jsonl"
             

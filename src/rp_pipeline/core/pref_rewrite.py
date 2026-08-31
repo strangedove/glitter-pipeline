@@ -137,8 +137,8 @@ class PrefRewriter:
         conversation_text = scene.conversation
 
         rewrite_config = self.settings.get_model_config("rewriting")
-        max_tokens = kwargs.get("max_tokens", rewrite_config.get("max_tokens", 5000))
-        temperature = kwargs.get("temperature", rewrite_config.get("temperature", 0.7))
+        max_tokens = kwargs.pop("max_tokens", rewrite_config.get("max_tokens", 5000))
+        temperature = kwargs.pop("temperature", rewrite_config.get("temperature", 0.7))
 
         response = self.provider.generate(
             prompt=conversation_text,
@@ -155,7 +155,7 @@ class PrefRewriter:
         # Import here to avoid circular import
         from rp_pipeline.core.generation import SceneGenerator
 
-        rewritten_scene = SceneGenerator._parse_conversation(
+        rewritten_scene = SceneGenerator(provider=self.provider)._parse_conversation(
             response.content,
             None,
             assistant_name,
