@@ -42,7 +42,7 @@ class FeatherlessProvider(BaseModelProvider):
         self.api_key = api_key or os.environ.get("FEATHERLESS_API_KEY")
         if not self.api_key:
             raise ValueError("Featherless API key required. Set FEATHERLESS_API_KEY env var.")
-        self.model_id = model_id
+        self._model_id = model_id
         self.base_url = "https://api.featherless.ai/v1"
     
     @classmethod

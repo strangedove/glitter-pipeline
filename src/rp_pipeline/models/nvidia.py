@@ -42,7 +42,7 @@ class NVIDIAProvider(BaseModelProvider):
         self.api_key = api_key or os.environ.get("NVIDIA_API_KEY")
         if not self.api_key:
             raise ValueError("NVIDIA API key required. Set NVIDIA_API_KEY env var.")
-        self.model_id = model_id
+        self._model_id = model_id
         self.base_url = "https://integrate.api.nvidia.com/v1"
     
     @classmethod

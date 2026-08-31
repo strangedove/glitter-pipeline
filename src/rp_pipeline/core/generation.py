@@ -187,8 +187,16 @@ class SceneGenerator:
         Returns:
             Parsed Scene object
         """
-        # Parse turns
-        turns = self._parse_turns(conversation)
+        # Parse turns; fallback when the model skipped the marker format
+        # (common with reasoning models). Recover from raw prose first.
+        turns, turn_parse = self._parse_turns(conversation), "native"
+        self._rescued_conversation = None
+        if len(turns) < 4 and len(conversation.strip()) > 400:
+            turns, turn_parse = self._rescue_turns(conversation)
+            if turn_parse == "llm_structured" and len(turns) < 4:
+                turns, turn_parse = self._synthesize_turns(conversation), "synthesized"
+            if turn_parse == "llm_structured" and self._rescued_conversation:
+                conversation = self._rescued_conversation
 
         # Calculate metrics
         total_words = sum(t.word_count for t in turns)
@@ -211,6 +219,7 @@ class SceneGenerator:
                 "user_name": user_name,
                 "genre": card.genre if card else None,
                 "tone": card.tone if card else None,
+                "turn_parse": turn_parse,
             },
             total_word_count=total_words,
             total_token_count=total_tokens,
@@ -218,6 +227,116 @@ class SceneGenerator:
         )
 
         return scene
+
+    def _rescue_turns(self, conversation: str) -> Tuple[List[Turn], str]:
+        """
+        Recover turns from prose that ignored the marker format.
+
+        1. Deterministic: split into paragraphs, batch them into turn-sized
+           blocks, assign alternating roles.
+        2. If that still yields <4 turns, ask the judge provider to insert
+           markers, then re-parse.
+
+        Returns (turns, provenance) where provenance is
+        "synthesized" | "llm_structured" | "unrecoverable".
+        """
+        turns = self._synthesize_turns(conversation)
+        if len(turns) >= 4:
+            return turns, "synthesized"
+
+        # LLM safety net: cheap structuring pass on the judge provider.
+        try:
+            from rp_pipeline.models.base import ModelFactory
+
+            judge_cfg = dict(get_settings().get_model_config("judging"))
+            if not judge_cfg.get("provider"):
+                return turns, "unrecoverable"
+            provider = ModelFactory.create(
+                judge_cfg.get("provider", "featherless"), judge_cfg
+            )
+            response = provider.generate(
+                prompt=(
+                    "The following roleplay scene lost its turn markers. "
+                    "Re-emit it EXACTLY as given — same words, same order, "
+                    "no commentary — but insert turn markers so the speakers "
+                    "strictly alternate. Each turn begins with a marker line "
+                    "[USER - Turn N] or [ASSISTANT - Turn N] (sequential "
+                    "numbering across both speakers), and each turn is 1-6 "
+                    "paragraphs. Dialogue lines belong to whoever spoke them.\n\n"
+                    "SCENE:\n\n" + conversation
+                ),
+                system=(
+                    "You are a text-formatting tool. Re-emit the scene with "
+                    "alternating turn markers. Do not rewrite, summarize, or "
+                    "add anything."
+                ),
+                max_tokens=max(4096, int(len(conversation.split()) * 2.5)),
+                temperature=0.1,
+            )
+            if response.success and response.content:
+                llm_turns = self._parse_turns(response.content)
+                if len(llm_turns) >= 4:
+                    # Preserve the original text as the canonical conversation
+                    rebuilt = "\n\n".join(
+                        f"[{t.role} - Turn {i + 1}]\n{t.content}"
+                        for i, t in enumerate(llm_turns)
+                    )
+                    for i, t in enumerate(llm_turns):
+                        t.turn_number = i + 1
+                    conversation = rebuilt
+                    self._rescued_conversation = rebuilt
+                    return llm_turns, "llm_structured"
+        except Exception:
+            pass
+        return turns, "unrecoverable"
+
+    def _synthesize_turns(self, conversation: str) -> List[Turn]:
+        """
+        Deterministic fallback: split prose into paragraphs, batch them into
+        turn-sized blocks (>=80 words or a dialogue-heavy block, <=400 words),
+        and assign alternating roles starting with USER.
+        """
+        paragraphs = [p.strip() for p in re.split(r"\n\s*\n", conversation) if p.strip()]
+        if len(paragraphs) < 2:
+            # split on single newlines as a weaker signal
+            paragraphs = [p.strip() for p in conversation.split("\n") if p.strip()]
+        if not paragraphs:
+            return []
+
+        blocks: List[List[str]] = []
+        current: List[str] = []
+        for p in paragraphs:
+            has_dialogue = any(ch in p for ch in "\"“”")
+            # A quoted-dialogue paragraph is a natural turn boundary;
+            # narration accumulates into the current turn until then.
+            if current and (has_dialogue or len(" ".join(current).split()) >= 400):
+                blocks.append(current)
+                current = []
+            current.append(p)
+        if current:
+            blocks.append(current)
+
+        # Merge down to a sane turn count (target_turns ± 2)
+        target = int(self.settings.generation.get("target_turns", 8))
+        while len(blocks) > target + 2 and len(blocks) > 2:
+            sizes = [len(" ".join(b).split()) for b in blocks]
+            i = min(range(len(blocks) - 1), key=lambda k: sizes[k] + sizes[k + 1])
+            blocks[i:i + 2] = [blocks[i] + blocks[i + 1]]
+
+        turns: List[Turn] = []
+        for i, block in enumerate(blocks):
+            role = "USER" if i % 2 == 0 else "ASSISTANT"
+            content = "\n\n".join(block)
+            turns.append(
+                Turn(
+                    role=role,
+                    turn_number=i + 1,
+                    content=content,
+                    word_count=len(content.split()),
+                    token_count=max(1, len(content) // 4),
+                )
+            )
+        return turns
 
     def _parse_turns(self, conversation: str) -> List[Turn]:
         """
