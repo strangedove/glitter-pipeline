@@ -57,10 +57,21 @@ def parse_args():
     parser.add_argument(
         "--style-rewrite",
         action="store_true",
-        help="Use style-focused rewrite (more aggressive prose improvement)"
+        help="Style pass: fix only TIC-detected/style-judged issues, preserve events and structure"
     )
-    
-    # Model parameters
+    parser.add_argument(
+        "--judge-dir",
+        type=str,
+        default=None,
+        help="Directory of *.judgment.jsonl behavioral verdicts. Gates rewriting: "
+             "only scenes with VERDICT: NEEDS_REWRITE are rewritten; the verdict "
+             "text is injected as feedback for the rewriter"
+    )
+    parser.add_argument(
+        "--no-gate",
+        action="store_true",
+        help="Rewrite all scenes even when judge verdicts say PASS"
+    )
     parser.add_argument(
         "--max-tokens",
         type=int,
@@ -121,6 +132,8 @@ def load_config(args: argparse.Namespace) -> Dict[str, Any]:
         "model": args.model,
         "provider": args.provider,
         "style_rewrite": args.style_rewrite,
+        "judge_dir": args.judge_dir,
+        "no_gate": args.no_gate,
         "max_tokens": args.max_tokens or settings.defaults.get("rewriting", {}).get("max_tokens", 5000),
         "temperature": args.temperature or settings.defaults.get("rewriting", {}).get("temperature", 0.7),
         "checkpoint_enabled": not args.no_checkpoint,
@@ -244,6 +257,45 @@ def main():
     else:
         pref_rewriter = PrefRewriter(provider)
 
+    # Load behavioral verdicts for gating and feedback injection
+    verdicts = {}
+    if config["judge_dir"]:
+        for jf in Path(config["judge_dir"]).glob("*.judgment.jsonl"):
+            try:
+                jrec = json.loads(jf.read_text().strip())
+                beh = (jrec.get("judgments") or {}).get("behavioral") or ""
+                verdicts[jf.stem.replace(".judgment", "")] = beh
+            except (json.JSONDecodeError, OSError):
+                continue
+        logger.info(
+            f"Loaded {len(verdicts)} behavioral verdicts from {config['judge_dir']}"
+        )
+
+    def gate_scene(scene_id: str):
+        """Return (should_rewrite, feedback_text) for the scene."""
+        verdict = verdicts.get(scene_id)
+        if verdict is None:
+            if config["judge_dir"] and not config["no_gate"]:
+                # No verdict for this scene: can't confirm it's a problem.
+                return False, None
+            return True, None
+        if "VERDICT: NEEDS_REWRITE" in verdict or config["no_gate"]:
+            return True, verdict
+        return False, None
+
+    def style_critique(scene) -> str:
+        """Build the flagged-issues critique for the style pass."""
+        from rp_pipeline.core.analysis import TicDetector
+
+        detector = TicDetector()
+        text = "\n\n".join(t.content for t in scene.turns if t.role == "ASSISTANT")
+        found = detector.detect_tics(text)
+        lines = []
+        for cat, matches in found.items():
+            if matches:
+                lines.append(f"- {cat}: {', '.join(repr(m) for m in matches[:6])}")
+        return "\n".join(lines) if lines else ""
+
     # Set up checkpoint
     checkpoint: Optional[PipelineCheckpoint] = None
     if config["checkpoint_enabled"]:
@@ -275,19 +327,44 @@ def main():
                     checkpoint.update(scene_id, False)
                 continue
             
-            # Structure-preserving path (default): PrefRewriter keeps the
-            # original turn count and speaker order; free-form fallback for
-            # --style-rewrite.
+            # Gate: only spend rewrite compute on scenes that need it.
+            # Behavioral pass: judge verdict gates + feedback.
+            # Style pass: TIC findings gate + critique injection.
+            feedback = None
+            if config["style_rewrite"]:
+                critique = style_critique(scene)
+                if not critique and not config["no_gate"]:
+                    logger.info(f"Skipping {scene_id}: no style issues detected")
+                    successful += 1
+                    if checkpoint:
+                        checkpoint.update(scene_id, True)
+                    continue
+                if critique:
+                    feedback = (
+                        "STYLE CRITIQUE - fix ONLY these flagged issues, change "
+                        "nothing else:\n" + critique
+                    )
+            elif not config["no_gate"]:
+                should, feedback = gate_scene(scene_id)
+                if not should:
+                    logger.info(f"Skipping {scene_id}: behavioral verdict PASS or missing")
+                    successful += 1
+                    if checkpoint:
+                        checkpoint.update(scene_id, True)
+                    continue
+
             if pref_rewriter is not None:
                 rewritten_scene, response = pref_rewriter.rewrite_scene(
                     scene,
+                    judge_feedback=feedback,
                     max_tokens=config["max_tokens"],
                     temperature=config["temperature"],
                 )
             else:
+                system = rewrite_system + (f"\n\n{feedback}" if feedback else "")
                 response = provider.generate(
                     prompt=scene.conversation,
-                    system=rewrite_system,
+                    system=system,
                     max_tokens=config["max_tokens"],
                     temperature=config["temperature"],
                 )

@@ -96,6 +96,10 @@ judge_system: |
 
   Be CRITICAL — identify weaknesses with quoted text. 300-500 words. Plain paragraphs, no markdown.
 
+  End your analysis with EXACTLY one final line:
+  VERDICT: NEEDS_REWRITE   (if any dimension above fails and a behavioral rewrite would genuinely improve the scene)
+  VERDICT: PASS            (if the scene's behavior is sound and a rewrite is not warranted)
+
 # Rewrite System
 rewrite_system: |
   You are revising a roleplay conversation based on editorial feedback. SUBSTANTIALLY rewrite to fix identified weaknesses.
@@ -183,15 +187,10 @@ pref_rewrite_system: |
   - VARY TURN LENGTH with the beat (don't normalize toward uniform size)
   - Some turns short and clipped, others longer as the moment dictates
 
-  PROSE FIXES:
-  - Remove narrator emotion-telling ("she felt", "he knew", etc.)
-  - Cut "though/despite/but" constructions that explain subtext
-  - Vary physical beats - don't rely on the same gestures repeatedly
-  - Don't wrap up neatly - leave tension unresolved
-  - Do NOT start turns with "I didn't look up" or similar - vary openings
-  - Reduce italicized emphasis - only when stress genuinely changes meaning
-  - Do NOT tag dialogue with voice descriptions ("said, his voice dropping")
-  - DIVERSIFY SENTENCE OPENERS - never start 3+ consecutive sentences with same pronoun
+  STYLE AND PROSE FIXES are handled in a SEPARATE later pass - do NOT attempt
+  them here. Focus purely on what HAPPENS in the scene: character choices,
+  agency, momentum, plausibility, and how the interaction develops. Preserve
+  the existing prose voice except where behavior changes require it.
 
   IMPORTANT: The scene does NOT need to finish within the turn limit. 
   It can be an improved start that leaves room for continuation.
