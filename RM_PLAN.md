@@ -107,3 +107,25 @@ and on crossover combinations never seen in training.
   axis the rewriter regresses on; watch for it in future rewriters.
 - Similarity spread 0.02-0.49; only sim ≥ ~0.3 pairs look like true
   edit-in-place preference pairs.
+
+## TODO: behavioral rewriter edit-in-place constraints (added 2026-09-02)
+
+Finding: Kimi (K2.6/K3/K2-Instruct-0905) and MiMo behavioral rewrites regenerate
+the scene (median prose similarity 0.03-0.06, word counts -47% to -60%) instead
+of editing the original draft. Structure survives (verifier) but the
+preference-pair premise — "improved version of THE scene" — is weakened: the
+chosen side is effectively a fresh draft.
+
+Fix to implement + test on next data-gen pass:
+1. Prompt-level: per-turn edit contract in `pref_rewrite_system` — "rewrite the
+   scene turn by turn; turn N of your output must correspond to turn N of the
+   input; keep at least half of each turn's concrete details; length within
+   +/-20% of the original turn" (replace the current whole-scene instructions).
+2. Gate-level: add a similarity floor to the rewrite stage (reject rewrites
+   below ~0.3 scene similarity alongside the structural verifier).
+3. Optional: two-stage rewrite — first pass edits in place; only scenes the
+   judge still fails get the free-form regeneration treatment.
+4. Test: re-run one Kimi + one Gemma rewrite pass on the same corpus; measure
+   similarity distribution, word delta, and judge flag-rate delta before/after.
+Note: Gemma's style pass already edits surgically (sim 0.98 on a 3-tic scene);
+the behavioral seat is the one that regenerates.
