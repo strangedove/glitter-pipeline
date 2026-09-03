@@ -54,6 +54,11 @@ class TicDetector:
             r'\bthe\s+way\s+it\s+\w+',
             r'\bthe\s+way\s+the\s+\w+',
         ],
+
+        # Adjective-pair stacking: "<adj>, <adj> <noun>" (modern-model house style)
+        "adjective_pairs": [
+            r"\b(cold|clinical|quiet|slow|soft|sharp|steady|careful|deliberate|practiced|weary|grim|pale|dark|bright|warm|heavy|light|thin|thick|smooth|rough|clean|neat|precise|efficient|hollow|empty|low|distant|remote|detached|flat|dry|tight|loose|firm|gentle|harsh|crisp|muted|dense|sparse|lean|taut|slack|calm|still|silent|sudden|quick|brief|long|small|tiny|vast|immense|narrow|wide|straight|crooked|simple|plain|rich|poor|old|young|new|fresh|stale|sweet|bitter|metallic|keen|patient|methodical|mechanical|professional|military|economical|elegant|graceful|certain),\s+(cold|clinical|quiet|slow|soft|sharp|steady|careful|deliberate|practiced|weary|grim|pale|dark|bright|warm|heavy|light|thin|thick|smooth|rough|clean|neat|precise|efficient|hollow|empty|low|distant|remote|detached|flat|dry|tight|loose|firm|gentle|harsh|crisp|muted|dense|sparse|lean|taut|slack|calm|still|silent|sudden|quick|brief|long|small|tiny|vast|immense|narrow|wide|straight|crooked|simple|plain|rich|poor|old|young|new|fresh|stale|sweet|bitter|metallic|keen|patient|methodical|mechanical|professional|military|economical|elegant|graceful|certain)\s+[a-z]+\b",
+        ],
         # Narrator intrusion
         "narrator_intrusion": [
             r'\b(Not\s+a\s+question\.?)\b',
