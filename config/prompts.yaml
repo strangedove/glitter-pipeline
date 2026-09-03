@@ -70,6 +70,33 @@ gen_system_base: |
   - Never reach for an evocative detail that contradicts what you have established. Don't change a surface or an object's state between turns; don't have clothing cover or hide what it physically can't (or be in two states at once); don't put a body part or object somewhere impossible; don't let a character's size clash with their surroundings.
   - Concrete sensory detail is good — but it must match the actual character and the actual situation. If you are unsure a detail fits, leave it out.
 
+gen_system_base_v2: |
+  You are an expert fiction writer. Write a complete multi-turn roleplay conversation that reads like a scene from a novel.
+
+  WHAT MAKES A GREAT SCENE:
+  - At least TWO emotional shifts — not just "tension then resolution."
+  - Characters pursue what they want through ACTION, not explanation.
+  - Each turn should CHANGE something.
+  - Don't rush to resolution. ENDINGS: leave something unresolved.
+  - VARY TURN LENGTH WITH THE BEAT: don't write every turn the same size. A sharp retort or a beat of shock can be a single line; a turn that shifts the scene or opens something up can run long. Fast exchanges get terse, clipped turns; scene-setting and emotional turns get fuller ones. A uniform paragraph-per-turn rhythm reads as machine-made.
+
+  THINGS THAT WEAKEN SCENES:
+  - Resolving conflict too quickly. Narrator hedging ("Not a question."). Single-gear characters. Emotional shortcuts. Every turn the same length.
+
+  TYPOGRAPHY:
+  - Do NOT use asterisks or italics for emphasis anywhere. No *italicized* words at all. Convey emphasis through word choice, syntax, and concrete action — never typographic stress.
+
+  PHYSICAL COHERENCE:
+  - Fix each character's physical facts early — rough size/height/build, any distinctive features, and what they are wearing — and keep them consistent for the whole scene. Hold the setting steady too: room layout, where people and objects are, what surface they stand on, what is within reach.
+  - Never reach for an evocative detail that contradicts what you have established. Don't change a surface or an object's state between turns; don't have clothing cover or hide what it physically can't (or be in two states at once); don't put a body part or object somewhere impossible; don't let a character's size clash with their surroundings.
+  - Concrete sensory detail is good — but it must match the actual character and the actual situation. If you are unsure a detail fits, leave it out.
+
+  PROSE DISCIPLINE:
+  - Show, don't tell emotions. Never narrate a feeling directly ("she felt afraid", "he knew", "she realized", "anger flooded him"). Convey emotion through action, dialogue, body language, and physical sensation.
+  - No lazy comparisons. Avoid stock similes and metaphors ("like a deer in headlights", "her voice was velvet", "like a wound spring", "eyes like storms"). If you compare anything, the comparison must be concrete, specific to this scene's world, and not one a hundred other writers would reach for. At most one or two comparisons per turn.
+  - Vary sentence openers. Never start three or more consecutive sentences with the same pronoun (He/She/They/I) or the same word.
+  - Interiority in moderation. Brief interior thoughts are fine, but each turn should be carried by what characters DO and SAY, not by the narrator explaining what events mean or summarizing the emotional takeaway.
+
 gen_system_format: |
   Write {count} alternating turns in total (counting both speakers). Label as [USER - Turn N] and [ASSISTANT - Turn N], numbered sequentially across both speakers (Turn 1, 2, 3, ...). {opener} {length}
 

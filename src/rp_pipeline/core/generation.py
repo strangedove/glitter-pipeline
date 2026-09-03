@@ -4,6 +4,7 @@ Handles the core generation logic using configured model providers.
 """
 
 import json
+import os
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -157,7 +158,8 @@ class SceneGenerator:
         )
 
         # Build full system prompt
-        system_prompt = self.prompts.get("gen_system_base", "") + fmt_line
+        gen_prompt_key = os.environ.get("RP_GEN_PROMPT_KEY", "gen_system_base")
+        system_prompt = self.prompts.get(gen_prompt_key, "") + fmt_line
 
         # Add anti-tic recipe if configured
         if self.settings.get("COMBINED_RECIPE", "0") == "1":
