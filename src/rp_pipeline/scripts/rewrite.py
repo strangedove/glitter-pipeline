@@ -391,6 +391,7 @@ def main():
             # Structural verifier: a rewrite that drifts on turn count or
             # speaker order breaks the preference-pair contract — reject it.
             orig_roles = [t.role for t in scene.turns]
+            new_roles = [t.role for t in rewritten_scene.turns]
             if len(new_roles) != len(orig_roles) or new_roles != orig_roles:
                 logger.warning(
                     f"Rejected rewrite {scene_id}: turn structure drifted "
@@ -414,14 +415,7 @@ def main():
                 if checkpoint:
                     checkpoint.update(scene_id, False)
                 continue
-                logger.warning(
-                    f"Rejected rewrite {scene_id}: turn structure drifted "
-                    f"({len(orig_roles)}->{len(new_roles)} turns)"
-                )
-                failed += 1
-                if checkpoint:
-                    checkpoint.update(scene_id, False)
-                continue
+
             
             result = format_scene_oai(rewritten_scene)
             output_file = output_dir / f"{scene_id}.rewritten.jsonl"
