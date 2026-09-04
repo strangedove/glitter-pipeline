@@ -59,6 +59,12 @@ class TicDetector:
         "adjective_pairs": [
             r"\b(cold|clinical|quiet|slow|soft|sharp|steady|careful|deliberate|practiced|weary|grim|pale|dark|bright|warm|heavy|light|thin|thick|smooth|rough|clean|neat|precise|efficient|hollow|empty|low|distant|remote|detached|flat|dry|tight|loose|firm|gentle|harsh|crisp|muted|dense|sparse|lean|taut|slack|calm|still|silent|sudden|quick|brief|long|small|tiny|vast|immense|narrow|wide|straight|crooked|simple|plain|rich|poor|old|young|new|fresh|stale|sweet|bitter|metallic|keen|patient|methodical|mechanical|professional|military|economical|elegant|graceful|certain),\s+(cold|clinical|quiet|slow|soft|sharp|steady|careful|deliberate|practiced|weary|grim|pale|dark|bright|warm|heavy|light|thin|thick|smooth|rough|clean|neat|precise|efficient|hollow|empty|low|distant|remote|detached|flat|dry|tight|loose|firm|gentle|harsh|crisp|muted|dense|sparse|lean|taut|slack|calm|still|silent|sudden|quick|brief|long|small|tiny|vast|immense|narrow|wide|straight|crooked|simple|plain|rich|poor|old|young|new|fresh|stale|sweet|bitter|metallic|keen|patient|methodical|mechanical|professional|military|economical|elegant|graceful|certain)\s+[a-z]+\b",
         ],
+
+        # Negation-correction rhetoric: "Not a question." / "not X, not Y, but Z"
+        "negation_correction": [
+            r"\bnot\s+(a|an|the|to|even|quite|just|one)\s+[^.!?]{3,40}[.,;]",
+            r"\bnot\s+[^,.!?;]{2,25},\s*not\s+[^,.!?;]{2,25}",
+        ],
         # Narrator intrusion
         "narrator_intrusion": [
             r'\b(Not\s+a\s+question\.?)\b',
