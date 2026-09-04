@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Optional
 
 from rp_pipeline.config.settings import get_settings, reset_settings
 from rp_pipeline.core.generation import SceneGenerator
+from rp_pipeline.core.verification import check_turn_labels
 from rp_pipeline.data.cards import CardDatabase
 from rp_pipeline.data.schemas import CharacterCard, Scene
 from rp_pipeline.utils.caching import PipelineCheckpoint, get_disk_cache
@@ -310,14 +311,29 @@ def main():
                 )
                 
                 if scene is None:
-                    logger.warning(f"Failed to generate scene for {card_id} variant {variant}")
+                    logger.warning(
+                        f"Failed to generate scene for {card_id} variant {variant}: "
+                        f"{response.error}"
+                    )
                     failed += 1
                     if checkpoint:
                         checkpoint.update(f"{card_id}_v{variant}", False)
                     continue
-                
-                if direction_meta:
-                    scene.metadata["direction"] = direction_meta
+
+                # Turn-label verifier: reject scenes where the model wrote the
+                # other speaker's turns (poaching) or leaked role/turn labels
+                # into turn content — both corrupt downstream parsing/training.
+                issues = check_turn_labels(scene)
+                if issues["poaching"] or issues["label_leak"]:
+                    kind = "poaching" if issues["poaching"] else "label leak"
+                    logger.warning(
+                        f"Rejected scene {card_id}_v{variant}: turn-label {kind} "
+                        f"({issues['poaching'][:1]}{issues['label_leak'][:1]})"
+                    )
+                    failed += 1
+                    if checkpoint:
+                        checkpoint.update(f"{card_id}_v{variant}", False)
+                    continue
 
                 # Format and save
                 oai_scene = format_scene_oai(scene)

@@ -16,6 +16,7 @@ from typing import Any, Dict, List, Optional
 from rp_pipeline.config.settings import get_settings, load_prompts
 from rp_pipeline.data.schemas import Scene, Turn
 from rp_pipeline.core.generation import SceneGenerator
+from rp_pipeline.core.verification import check_turn_labels
 from rp_pipeline.models.base import ModelFactory
 from rp_pipeline.utils.caching import PipelineCheckpoint
 from rp_pipeline.utils.logging import StructuredLogger
@@ -316,6 +317,7 @@ def main():
     
     for file_path in input_files:
         scene_id = file_path.stem
+        processed += 1
         
         try:
             # Load scene
@@ -389,8 +391,29 @@ def main():
             # Structural verifier: a rewrite that drifts on turn count or
             # speaker order breaks the preference-pair contract — reject it.
             orig_roles = [t.role for t in scene.turns]
-            new_roles = [t.role for t in rewritten_scene.turns]
             if len(new_roles) != len(orig_roles) or new_roles != orig_roles:
+                logger.warning(
+                    f"Rejected rewrite {scene_id}: turn structure drifted "
+                    f"({len(orig_roles)}->{len(new_roles)} turns)"
+                )
+                failed += 1
+                if checkpoint:
+                    checkpoint.update(scene_id, False)
+                continue
+
+            # Turn-label verifier: reject rewrites that poach the other
+            # speaker's turns or leak role/turn labels into turn content.
+            label_issues = check_turn_labels(rewritten_scene)
+            if label_issues["poaching"] or label_issues["label_leak"]:
+                kind = "poaching" if label_issues["poaching"] else "label leak"
+                logger.warning(
+                    f"Rejected rewrite {scene_id}: turn-label {kind} "
+                    f"({(label_issues['poaching'] + label_issues['label_leak'])[:1]})"
+                )
+                failed += 1
+                if checkpoint:
+                    checkpoint.update(scene_id, False)
+                continue
                 logger.warning(
                     f"Rejected rewrite {scene_id}: turn structure drifted "
                     f"({len(orig_roles)}->{len(new_roles)} turns)"
@@ -417,8 +440,6 @@ def main():
             failed += 1
             if checkpoint:
                 checkpoint.update(scene_id, False)
-        
-        processed += 1
     
     # Mark complete
     if checkpoint:
