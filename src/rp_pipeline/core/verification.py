@@ -89,3 +89,22 @@ def check_turn_labels(scene: Scene) -> Dict[str, List[str]]:
 def scene_has_poaching(scene: Scene) -> bool:
     """True if any assistant turn writes the user's side of the scene."""
     return bool(check_turn_labels(scene)["poaching"])
+
+
+def check_turn_variety(scene: Scene, min_turns: int = 4, uniform_cv: float = 0.12) -> Dict:
+    """
+    Measure assistant turn-length variability. Scenes where every assistant
+    turn is near-identical in size (coefficient of variation below
+    `uniform_cv`) read as machine-made; fixing them in rewrite means touching
+    every turn, so they are better rejected at draft time.
+
+    Returns {"cv": float, "n_assistant": int, "uniform": bool}.
+    """
+    lens = [t.word_count for t in scene.turns if t.role.upper().startswith("ASSIST")]
+    if len(lens) < min_turns:
+        return {"cv": None, "n_assistant": len(lens), "uniform": False}
+    mean = sum(lens) / len(lens)
+    if mean <= 0:
+        return {"cv": None, "n_assistant": len(lens), "uniform": False}
+    cv = (sum((x - mean) ** 2 for x in lens) / len(lens)) ** 0.5 / mean
+    return {"cv": round(cv, 3), "n_assistant": len(lens), "uniform": cv < uniform_cv}

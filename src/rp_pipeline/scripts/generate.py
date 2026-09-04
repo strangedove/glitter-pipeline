@@ -13,7 +13,7 @@ from typing import Any, Dict, List, Optional
 
 from rp_pipeline.config.settings import get_settings, reset_settings
 from rp_pipeline.core.generation import SceneGenerator
-from rp_pipeline.core.verification import check_turn_labels
+from rp_pipeline.core.verification import check_turn_labels, check_turn_variety
 from rp_pipeline.data.cards import CardDatabase
 from rp_pipeline.data.schemas import CharacterCard, Scene
 from rp_pipeline.utils.caching import PipelineCheckpoint, get_disk_cache
@@ -335,7 +335,21 @@ def main():
                         checkpoint.update(f"{card_id}_v{variant}", False)
                     continue
 
-                # Format and save
+                # Turn-variety gate: near-uniform assistant turn lengths read
+                # as machine-made; fixing them in rewrite means touching every
+                # turn, so reject at draft time (threshold = p5 of measured
+                # corpora, ~5% rejection rate).
+                variety = check_turn_variety(scene)
+                if variety["uniform"]:
+                    logger.warning(
+                        f"Rejected scene {card_id}_v{variant}: uniform turn "
+                        f"lengths (cv={variety['cv']} over {variety['n_assistant']} assistant turns)"
+                    )
+                    failed += 1
+                    if checkpoint:
+                        checkpoint.update(f"{card_id}_v{variant}", False)
+                    continue
+
                 oai_scene = format_scene_oai(scene)
                 output_file = output_dir / f"{card.assistant_name}_{card.user_name}_v{variant}.jsonl"
                 
