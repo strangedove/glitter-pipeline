@@ -250,10 +250,16 @@ class SceneGenerator:
         """
         # Parse turns; fallback when the model skipped the marker format
         # (common with reasoning models). Recover from raw prose first.
-        turns, turn_parse = self._parse_turns(conversation), "native"
-        self._rescued_conversation = None
+        # role_map lets the parser recognize character-name turn labels
+        # ([Jubal - Turn 3], **Turn 4 — VERITY**, ...) as role markers.
+        role_map: Dict[str, str] = {}
+        for fragment, role in ((user_name, "USER"), (assistant_name, "ASSISTANT")):
+            for part in re.split(r"\s+", fragment.strip()) if fragment else ():
+                if len(part) >= 3:
+                    role_map[part.lower()] = role
+        turns, turn_parse = self._parse_turns(conversation, role_map), "native"
         if len(turns) < 4 and len(conversation.strip()) > 400:
-            turns, turn_parse = self._rescue_turns(conversation)
+            turns, turn_parse = self._rescue_turns(conversation, role_map)
             if turn_parse == "llm_structured" and len(turns) < 4:
                 turns, turn_parse = self._synthesize_turns(conversation), "synthesized"
             if turn_parse == "llm_structured" and self._rescued_conversation:
@@ -289,7 +295,9 @@ class SceneGenerator:
 
         return scene
 
-    def _rescue_turns(self, conversation: str) -> Tuple[List[Turn], str]:
+    def _rescue_turns(
+        self, conversation: str, role_map: Optional[Dict[str, str]] = None
+    ) -> Tuple[List[Turn], str]:
         """
         Recover turns from prose that ignored the marker format.
 
@@ -335,7 +343,7 @@ class SceneGenerator:
                 temperature=0.1,
             )
             if response.success and response.content:
-                llm_turns = self._parse_turns(response.content)
+                llm_turns = self._parse_turns(response.content, role_map)
                 if len(llm_turns) >= 4:
                     # Preserve the original text as the canonical conversation
                     rebuilt = "\n\n".join(
@@ -399,62 +407,85 @@ class SceneGenerator:
             )
         return turns
 
-    def _parse_turns(self, conversation: str) -> List[Turn]:
+    def _parse_turns(
+        self, conversation: str, role_map: Optional[Dict[str, str]] = None
+    ) -> List[Turn]:
         """
         Parse conversation text into Turn objects.
 
+        Accepts every label shape observed in the wild:
+          [USER - Turn 3] / [assistant - Turn 3]      (case-insensitive)
+          [Turn 3 - USER] / [Turn 3 — Assistant]      (reversed order)
+          [Jubal - Turn 3] / [Turn 3 — VERITY]        (character-name labels,
+          **Turn 3 — NAME**                            mapped via role_map)
+          Turn 3 - NAME                               (bare header line)
+
+        role_map maps lowercased name fragments to "USER"/"ASSISTANT".
+
         Args:
             conversation: Raw conversation text
+            role_map: Optional name-to-role mapping from the card
 
         Returns:
             List of Turn objects
         """
-        turns = []
+        role_map = role_map or {}
+        em = r"[-–—]"
 
-        # Pattern to match turn labels: [USER - Turn N] or [ASSISTANT - Turn N]
-        turn_pattern = re.compile(
-            r'\[(USER|ASSISTANT)\s*-\s*Turn\s*(\d+)\s*\]'
+        role_label = re.compile(
+            rf"\[\s*(?:(USER|ASSISTANT)\s*{em}\s*Turn\s*(\d+)"
+            rf"|Turn\s*(\d+)\s*{em}\s*(USER|ASSISTANT))\s*\]",
+            re.I,
         )
+        name_alt = "|".join(re.escape(n) for n in role_map) if role_map else r"\x00NOPE\x00"
+        name_label = re.compile(
+            rf"(?:\[\s*(?:(?P<n1>{name_alt})\s*{em}\s*Turn\s*(?P<num1>\d+)"
+            rf"|Turn\s*(?P<num2>\d+)\s*{em}\s*(?P<n2>{name_alt}))\s*\]"
+            rf"|\*\*\s*Turn\s*(?P<num3>\d+)\s*{em}\s*(?P<n3>{name_alt})\s*\*\*"
+            rf"|^\s*Turn\s*(?P<num4>\d+)\s*{em}\s*(?P<n4>{name_alt})\s*$)",
+            re.I | re.M,
+        )
+        # All label occurrences in one position-sorted list:
+        # (position, end, role)
+        marks: List[tuple] = []
+        for m in role_label.finditer(conversation):
+            role = (m.group(1) or m.group(4)).upper()
+            marks.append((m.start(), m.end(), role))
+        for m in name_label.finditer(conversation):
+            name = m.group("n1") or m.group("n2") or m.group("n3") or m.group("n4")
+            role = role_map.get(name.lower().strip())
+            if role:
+                marks.append((m.start(), m.end(), role))
+        marks.sort()
 
-        # Split by turn labels
-        parts = turn_pattern.split(conversation)
-
-        # Process parts: pattern returns [prefix, role1, num1, content1, role2, num2, content2, ...]
-        # The first part (parts[0]) might contain scene-setting text before the first label
-        # Start at index 1, step by 3
-        for i in range(1, len(parts), 3):
-            # Check we have enough parts for role, num, content
-            if i + 2 >= len(parts):
-                break
-            role = parts[i].strip()
-            turn_num_str = parts[i + 1].strip()
-            content = parts[i + 2].strip()
-
-            # Skip if we don't have a valid turn number
-            if not role or not turn_num_str:
+        # Drop overlapping matches (a name match nested in a role match etc.)
+        deduped: List[tuple] = []
+        for s, e, role in marks:
+            if deduped and s < deduped[-1][1]:
                 continue
+            deduped.append((s, e, role))
+        marks = deduped
 
-            try:
-                turn_num = int(turn_num_str)
-            except ValueError:
-                continue
-
-            # Clean up content (remove leading/trailing whitespace, newlines)
+        turns: List[Turn] = []
+        for i, (s, e, role) in enumerate(marks):
+            end = marks[i + 1][0] if i + 1 < len(marks) else len(conversation)
+            content = conversation[e:end]
+            # Strip any residual label fragments (bold headers etc.)
+            content = role_label.sub("", content)
+            content = name_label.sub("", content)
             content = content.replace("\n", " ").strip()
-
-            if content:
-                word_count = len(content.split())
-                # Estimate token count (roughly 1.3 words per token on average)
-                token_count = int(word_count * 1.3)
-
-                turns.append(Turn(
+            if not content:
+                continue
+            word_count = len(content.split())
+            turns.append(
+                Turn(
                     role=role,
-                    turn_number=turn_num,
+                    turn_number=len(turns) + 1,
                     content=content,
                     word_count=word_count,
-                    token_count=token_count,
-                ))
-
+                    token_count=int(word_count * 1.3),
+                )
+            )
         return turns
 
     def _ensure_ends_with_assistant(
